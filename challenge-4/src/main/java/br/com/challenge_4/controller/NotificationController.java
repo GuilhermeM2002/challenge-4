@@ -23,6 +23,7 @@ public class NotificationController {
     public ResponseEntity<NotificationDto> getNotificationStatus(@PathVariable Long id) {
         return service.getNotificationStatus(id)
                 .map(ResponseEntity::ok)
+
                 .orElse(ResponseEntity.notFound().build());
     }
 }
