@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class NotificationService {
@@ -21,24 +22,29 @@ public class NotificationService {
     private ModelMapper mapper;
 
     @Async
-    @Transactional
-    public CompletableFuture<Void> sendNotificationAsync(NotificationDto dto) {
+    public CompletableFuture<Notification> sendNotificationAsync(NotificationDto dto) {
         var notification = mapper.map(dto, Notification.class);
-        try {
-            notification.setStatus(Status.PROCESSING);
-            repository.save(notification);
+        notification.setStatus(Status.PROCESSING);
+        repository.save(notification);
 
-            // Simular envio de notificação
-            Thread.sleep(5000);
-
-            notification.setStatus(Status.SENT);
-            repository.save(notification);
-        } catch (InterruptedException e) {
-            notification.setStatus(Status.FAILED);
-            repository.save(notification);
-        }
-
-        return CompletableFuture.completedFuture(null);
+        return CompletableFuture
+                .runAsync(() -> {
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Notification sending was interrupted", e);
+                    }
+                }, CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS))
+                .thenApplyAsync(unused -> {
+                    notification.setStatus(Status.SENT);
+                    return repository.save(notification);
+                })
+                .exceptionally(ex -> {
+                    notification.setStatus(Status.FAILED);
+                    repository.save(notification);
+                    throw new RuntimeException("Failed to send notification", ex);
+                });
     }
 
     public NotificationDto saveNotification(NotificationDto dto) {
